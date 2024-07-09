@@ -1,19 +1,158 @@
-version: 0.2
+Description: >
+  Template for CodePipeline 
+Parameters:
+  ArtifactBucket:
+    Type: String 
+  CodeStarConnectionArn:
+    Type: String
+  RepoId:
+    Type: String
+  Branch:
+    Type: String
 
-phases:
-  install:
-    runtime-versions:
-      python: 3.8
-  pre_build:
-    commands:
-      - echo Pre-build phase
-  build:
-    commands:
-      - echo Build phase
-  post_build:
-    commands:
-      - echo Post-build phase
+Resources:
+  CodeBuildProject:
+    Type: AWS::CodeBuild::Project
+    Properties: 
+      ServiceRole: !Sub ${CodeBuildRole.Arn}
+      Artifacts:
+        Type: CODEPIPELINE
+      Environment:
+        Type: LINUX_CONTAINER
+        ComputeType: BUILD_GENERAL1_SMALL
+        Image: aws/codebuild/standard:5.0
+        EnvironmentVariables:
+        - Name: S3_ARTIFACT_BUCKET
+          Type: PLAINTEXT
+          Value: !Ref ArtifactBucket
+      Source:
+        Type: CODEPIPELINE
+      TimeoutInMinutes: 10
 
-artifacts:
-  files:
-    - '**/*'
+  Pipeline:
+    Type: AWS::CodePipeline::Pipeline
+    Properties:
+      ArtifactStore:
+        Location: !Ref ArtifactBucket
+        Type: S3
+      DisableInboundStageTransitions: [ ]
+      Name: !Sub ${AWS::StackName}-pipeline
+      RoleArn: !Sub ${PipelineRole.Arn}
+      Stages:
+        - Name: Source
+          Actions:
+            - Name: Source
+              ActionTypeId:
+                Version: '1'
+                Owner: AWS
+                Category: Source
+                Provider: CodeStarSourceConnection
+              OutputArtifacts:
+                - Name: SourceArtifact
+              RunOrder: 1
+              Configuration:
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Ref RepoId
+                BranchName: !Ref Branch
+                OutputArtifactFormat: "CODE_ZIP"
+                
+        - Name: Build
+          Actions:
+            - Name: Package
+              ActionTypeId:
+                Category: Build
+                Owner: AWS
+                Provider: CodeBuild
+                Version: '1'
+              InputArtifacts:
+                - Name: SourceArtifact
+              OutputArtifacts:
+                - Name: BuildArtifact
+              Configuration:
+                ProjectName: !Ref CodeBuildProject
+              RunOrder: '1'
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: 
+              - codepipeline.amazonaws.com
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyName: Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                - codepipeline:*
+                - ssm:*
+                - logs:*
+                - iam:PassRole
+                - cloudformation:CreateStack
+                - cloudformation:DescribeStacks
+                - cloudformation:DeleteStack
+                - cloudformation:UpdateStack
+                - cloudformation:CreateChangeSet
+                - cloudformation:ExecuteChangeSet
+                - cloudformation:DeleteChangeSet
+                - cloudformation:DescribeChangeSet
+                - cloudformation:SetStackPolicy
+                - codebuild:StartBuild
+                - codebuild:BatchGetBuilds
+                - codestar-connections:UseConnection
+                - codestar-connections:GetConnection
+                Effect: Allow
+                Resource: '*'
+        - PolicyName: S3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                - s3:*
+                Effect: Allow
+                Resource:
+                - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                - !Sub arn:aws:s3:::${ArtifactBucket}
+
+  CodeBuildRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Action: 
+            - sts:AssumeRole
+            Effect: Allow
+            Principal:
+              Service: 
+              - codebuild.amazonaws.com
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+        - PolicyName: Policy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                - ssm:*
+                - logs:*
+                - cloudformation:DescribeStacks
+                - cloudformation:ValidateTemplate
+                Effect: Allow
+                Resource: '*'
+        - PolicyName: S3
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Action:
+                - s3:*
+                Effect: Allow
+                Resource:
+                - !Sub arn:aws:s3:::${ArtifactBucket}/*
+                - !Sub arn:aws:s3:::${ArtifactBucket}
