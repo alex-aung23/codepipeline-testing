@@ -51,9 +51,9 @@ Resources:
                 - Name: SourceArtifact
               RunOrder: 1
               Configuration:
-                ConnectionArn: arn:aws:codestar-connections:us-east-1:905418295354:connection/caa9b46c-204c-4fbb-8ac5-4736fb0167f4
-                FullRepositoryId: alex_aung/aws-cloudformation-nestedstacks-example
-                BranchName: master
+                ConnectionArn: !Ref CodeStarConnectionArn
+                FullRepositoryId: !Ref RepoId
+                BranchName: !Ref Branch
                 OutputArtifactFormat: "CODE_ZIP"
                 
         - Name: Build
@@ -71,6 +71,52 @@ Resources:
               Configuration:
                 ProjectName: !Ref CodeBuildProject
               RunOrder: '1'
+
+        - Name: Deploy
+          Actions:
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Provider: CloudFormation
+                Version: '1'
+              InputArtifacts:
+                - Name: BuildArtifact
+              Configuration:
+                ActionMode: CREATE_UPDATE
+                Capabilities: CAPABILITY_NAMED_IAM,CAPABILITY_AUTO_EXPAND
+                RoleArn: !Sub ${CFNRole.Arn}
+                StackName: !Sub ${AWS::StackName}-resources
+                TemplateConfiguration: !Sub BuildArtifact::resources.params.dev.json
+                TemplatePath: BuildArtifact::resources.out.yml
+              RunOrder: '1'
+
+  CFNRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Action: 
+          - sts:AssumeRole
+          Effect: Allow
+          Principal:
+            Service: 
+            - cloudformation.amazonaws.com
+        Version: '2012-10-17'
+      Path: /
+      Policies:
+      - PolicyName: Policy
+        PolicyDocument:
+          Version: '2012-10-17'
+          Statement:
+          - Action:
+            - s3:*
+            - lambda:*
+            - cloudformation:*
+            - logs:*
+            - iam:*
+            Effect: Allow
+            Resource: '*'
 
   PipelineRole:
     Type: AWS::IAM::Role
