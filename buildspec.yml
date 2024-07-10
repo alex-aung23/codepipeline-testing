@@ -2,5 +2,5 @@ version: 0.2
 phases:
   build:
     commands:
-      - COMMIT_HASH=$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | cut -c 1-7)
+      - COMMIT_HASH=$(echo hello)
       - cd src && make package S3_BUCKET=$S3_ARTIFACT_BUCKET S3_PREFIX="packaged/commit-$COMMIT_HASH"
